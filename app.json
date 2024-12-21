@@ -2,6 +2,9 @@
   "expo": {
     "name": "saglikBitirmeApp",
     "slug": "saglikBitirmeApp",
+    "extra": {
+      "openaiApiKey": "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"
+    },
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
