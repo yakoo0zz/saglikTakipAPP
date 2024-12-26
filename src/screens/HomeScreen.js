@@ -1,5 +1,5 @@
-import axios from 'axios';
-import { Configuration } from 'openai';
+import axios from "axios";
+import { push, ref } from "firebase/database";
 import React, { useState } from "react";
 import {
   ScrollView,
@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { db } from "../../firebase"; // Firebase konfigürasyonu
 
 const HomeScreen = ({ navigation }) => {
   const [activeScreen, setActiveScreen] = useState("nabız");
@@ -17,38 +18,72 @@ const HomeScreen = ({ navigation }) => {
 
   const screens = ["nabız", "tansiyon", "kan şekeri", "ateş", "oksijen", "şeker"];
 
+  const saveToFirebase = async (data) => {
+    try {
+      const dbRef = ref(db, "healthData");
+      await push(dbRef, data);
+      console.log("Veri başarıyla Firebase'e kaydedildi:", data);
+    } catch (error) {
+      console.error("Firebase'e veri kaydedilirken hata oluştu:", error);
+    }
+  };
 
-  const configuration = new Configuration({
-    apiKey: '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',
-  });
-  
-const analyzeValue = async () => {
-  if (inputValue.trim() === "") {
-    setAnalysisResult("Lütfen bir değer girin.");
-    return;
-  }
+  const analyzeValue = async () => {
+    if (inputValue.trim() === "") {
+      setAnalysisResult("Lütfen bir değer girin.");
+      return;
+    }
 
-  try {
-    const response = await axios.post(
-      "https://api-inference.huggingface.co/models/dbmdz/bert-base-turkish-cased", // Türkçe odaklı model URL'si
-      {
-        inputs: `Bu kullanıcının nabız değeri: ${inputValue}. Bu değerle ilgili bir sağlık önerisi ver.`
-      },
-      {
-        headers: {
-          Authorization: `Bearer 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`, // Access Token
-        },
+    try {
+      // Değerin geçerli bir sayı olduğundan emin olun
+      const numericValue = parseFloat(inputValue);
+      if (isNaN(numericValue)) {
+        setAnalysisResult("Geçersiz değer! Lütfen bir sayı girin.");
+        return;
       }
-    );
 
-    const aiSuggestion = response.data[0]?.generated_text || "Sonuç alınamadı.";
-    setAnalysisResult(aiSuggestion);
-  } catch (error) {
-    console.error("Hugging Face API Hatası:",  error.response?.status, error.response?.data);
-    setAnalysisResult("Analiz sırasında bir hata oluştu.");
-  }
-};
-  
+      // Flask API'ye istek gönder
+      const response = await axios.post(
+        "http://192.168.10.177:5000/predict",
+        {
+          parametre: activeScreen, // Seçilen parametre
+          değer: numericValue, // Girilen değer (sayısal)
+        },
+        { timeout: 10000 } // 10 saniye zaman aşımı
+      );
+
+      // API'den gelen cevabı al
+      const suggestion = response.data.öneri || "Sonuç alınamadı.";
+      const status = response.data.durum || "Durum belirtilmedi.";
+
+      const analysisData = {
+        parametre: activeScreen,
+        değer: numericValue,
+        durum: status,
+        öneri: suggestion,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setAnalysisResult(
+        `Parametre: ${activeScreen}\nDeğer: ${numericValue}\nDurum: ${status}\nÖneri: ${suggestion}`
+      );
+
+      // Veriyi Firebase'e kaydet
+      await saveToFirebase(analysisData);
+    } catch (error) {
+      // Daha detaylı hata mesajı
+      console.error("Flask API Hatası:");
+      console.error("Durum Kodu:", error.response?.status || "Durum Kodu Yok");
+      console.error("Hata Verisi:", error.response?.data || "Hata Verisi Yok");
+      console.error("Headers:", error.response?.headers || "Headers Yok");
+      console.error("İstek URL'si:", error.config?.url || "URL Yok");
+      console.error("İstek Verisi:", error.config?.data || "Veri Yok");
+      console.error("Tam Hata Mesajı:", error.message || "Mesaj Yok");
+
+      setAnalysisResult("Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* 1. Bölge: Kaydırılabilir Butonlar */}
@@ -80,6 +115,7 @@ const analyzeValue = async () => {
           placeholder={`Buraya ${activeScreen} değerini girin...`}
           value={inputValue}
           onChangeText={(text) => setInputValue(text)}
+          keyboardType="numeric" // Sadece sayı girişi
         />
       </View>
 
@@ -115,14 +151,13 @@ const styles = StyleSheet.create({
   navbar: {
     flexDirection: "row",
     marginBottom: 20,
-
   },
   navButton: {
     paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 5,
     marginHorizontal: 5,
-    minWidth: 80, // Buton genişliği
+    minWidth: 80,
     maxHeight: 60,
     alignItems: "center",
   },
@@ -135,7 +170,7 @@ const styles = StyleSheet.create({
   navButtonText: {
     color: "white",
     fontWeight: "bold",
-    fontSize: 14, // Buton yazı boyutu
+    fontSize: 14,
   },
   inputContainer: {
     marginBottom: 20,
