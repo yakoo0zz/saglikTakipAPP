@@ -1,6 +1,6 @@
 import axios from "axios";
-import { push, ref } from "firebase/database";
-import React, { useState } from "react";
+import { onValue, push, ref } from "firebase/database";
+import React, { useEffect, useState } from "react";
 import {
   Dimensions,
   ImageBackground,
@@ -20,10 +20,9 @@ const HomeScreen = ({ navigation }) => {
   const [inputValue, setInputValue] = useState("");
   const [analysisResult, setAnalysisResult] = useState("");
   const [isModalVisible, setModalVisible] = useState(false);
+  const [chartData, setChartData] = useState([]);
 
-  const screens = ["nabız", "tansiyon", "kan şekeri", "ateş", "oksijen", "şeker"];
-  const weeklyData = [65, 72, 80, 68, 74, 79, 85]; // Haftalık veriler
-  const dailyData = [62, 68, 70, 65, 72, 78, 75]; // Günlük veriler
+  const screens = ["nabız", "Büyük Tansiyon","Küçük Tansiyon", "ateş", "oksijen", "Kan Şekeri (Tokluk)" , "Kan Şekeri (Açlık)"];
 
   const toggleModal = () => setModalVisible(!isModalVisible);
 
@@ -81,9 +80,26 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  const fetchChartData = () => {
+    const dbRef = ref(db, "healthData");
+    onValue(dbRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const formattedData = Object.values(data)
+          .filter((item) => item.parametre === activeScreen)
+          .map((item) => item.değer);
+        setChartData(formattedData);
+      }
+    });
+  };
+
+  useEffect(() => {
+    fetchChartData();
+  }, [activeScreen]);
+
   return (
     <ImageBackground
-      source={require("../assets/back.png")} // Arka plan resmi
+      source={require("../assets/back.png")}
       style={styles.backgroundImage}
     >
       <ScrollView contentContainerStyle={styles.container}>
@@ -126,12 +142,11 @@ const HomeScreen = ({ navigation }) => {
 
         {/* Grafik */}
         <View style={styles.chartContainer}>
-          <Text style={styles.chartTitle}>Haftalık Veriler</Text>
+          <Text style={styles.chartTitle}>Veriler</Text>
           <TouchableOpacity onPress={toggleModal}>
             <LineChart
               data={{
-                labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
-                datasets: [{ data: weeklyData }],
+                datasets: [{ data: chartData.length ? chartData : [0, 0, 0, 0, 0, 0, 0] }],
               }}
               width={Dimensions.get("window").width - 40}
               height={220}
@@ -157,12 +172,10 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.modalTitle}>Tüm Veriler</Text>
               <LineChart
                 data={{
-                  labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
                   datasets: [
-                    { data: weeklyData, color: () => `rgba(255, 0, 0, 1)` },
-                    { data: dailyData, color: () => `rgba(0, 255, 0, 1)` },
+                    { data: chartData.length ? chartData : [0, 0, 0, 0, 0, 0, 0] },
                   ],
-                  legend: ["Haftalık", "Günlük"],
+                  legend: [activeScreen],
                 }}
                 width={Dimensions.get("window").width - 40}
                 height={300}
@@ -190,8 +203,8 @@ const styles = StyleSheet.create({
     resizeMode: "cover",
   },
   container: {
-    flex: 1,
-    padding: 20,
+
+    padding: 20
   },
   navbar: {
     flexDirection: "row",
@@ -202,6 +215,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     marginHorizontal: 5,
     alignItems: "center",
+    height: 50, // Buton yüksekliğ
   },
   activeButton: {
     backgroundColor: "green",
@@ -221,6 +235,8 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 16,
     marginBottom: 20,
+    marginBottom: 20, 
+
   },
   customButton: {
     backgroundColor: "#007bff",
@@ -243,6 +259,8 @@ const styles = StyleSheet.create({
   resultText: {
     fontSize: 16,
     textAlign: "center",
+    marginBottom: 20, // Sabit boşluk sağlamak için ekledim
+
   },
   chartContainer: {
     marginTop: 20,
